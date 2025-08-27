@@ -22,7 +22,7 @@ jobs:
     
     steps:
     - name: Checkout xdelta source code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: jmacd/xdelta
         ref: 'v3.1.0' # Стабильная версия
@@ -55,7 +55,7 @@ jobs:
         mv xdelta3/xdelta3.exe ./xdelta3-win-x64.exe
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4 # <-- This line has been updated from v3 to v4
       with:
         name: xdelta3-binaries-${{ runner.os }}-${{ matrix.arch || 'x64' }}
         path: |
