@@ -1,63 +1,65 @@
-name: Build xdelta3
+name: Build xdelta3 Binaries
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
-  pull_request:
+    branches: [ main ] # Запускать при пуше в main
+  workflow_dispatch:   # Позволяет запускать вручную
 
 jobs:
   build:
-    name: Build (${{ matrix.os }}-${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         include:
-          # Linux
-          - os: linux
-            runner: ubuntu-latest
+          - os: macos-latest
             arch: x86_64
-          # macOS x86_64
-          - os: macos
-            runner: macos-13
-            arch: x86_64
-          # macOS arm64
-          - os: macos
-            runner: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
             arch: arm64
-          # Windows
-          - os: windows
-            runner: windows-latest
-            arch: x86_64
-
+            target: aarch64-apple-darwin
+            
+    runs-on: ${{ matrix.os }}
+    
     steps:
-      - name: Clone xdelta
-        run: |
-          git clone https://github.com/jmacd/xdelta.git
-          cd xdelta
-          git submodule update --init --recursive
+    - name: Checkout xdelta source code
+      uses: actions/checkout@v3
+      with:
+        repository: jmacd/xdelta
+        ref: 'v3.1.0' # Стабильная версия
 
-      - name: Install dependencies (Linux)
-        if: matrix.os == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential
+    - name: Set up build environment (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc make
 
-      - name: Install dependencies (macOS)
-        if: matrix.os == 'macos'
-        run: brew install make
+    - name: Build on Linux
+      if: runner.os == 'Linux'
+      run: |
+        make -C xdelta3
+        mv xdelta3/xdelta3 ./xdelta3-linux-x64
 
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows'
-        run: |
-          choco install make --yes
-          choco install mingw --yes
+    - name: Build on macOS
+      if: runner.os == 'macOS'
+      run: |
+        export CFLAGS="-arch ${{ matrix.arch }}"
+        make -C xdelta3
+        mv xdelta3/xdelta3 ./xdelta3-macos-${{ matrix.arch }}
+        
+    - name: Build on Windows
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      run: |
+        pacman -S --noconfirm mingw-w64-x86_64-gcc make
+        make -C xdelta3
+        mv xdelta3/xdelta3.exe ./xdelta3-win-x64.exe
 
-      - name: Build
-        working-directory: ./xdelta/xdelta3
-        run: make -j$(nproc || sysctl -n hw.ncpu || echo 2)
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: xdelta3-${{ matrix.os }}-${{ matrix.arch }}
-          path: ./xdelta/xdelta3/xdelta3
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: xdelta3-binaries-${{ runner.os }}-${{ matrix.arch || 'x64' }}
+        path: |
+          xdelta3-linux-x64
+          xdelta3-macos-*
+          xdelta3-win-x64.exe
+        if-no-files-found: error
