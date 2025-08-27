@@ -1,4 +1,4 @@
-name: Build xdelta3.1
+name: Build xdelta3
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
           - os: macos
             runner: macos-13
             arch: x86_64
-          # macOS arm64 (Apple Silicon)
+          # macOS arm64
           - os: macos
             runner: macos-latest
             arch: arm64
@@ -40,11 +40,11 @@ jobs:
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential autoconf automake libtool
+        run: sudo apt-get update && sudo apt-get install -y build-essential
 
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos'
-        run: brew install automake autoconf libtool
+        run: brew install make
 
       - name: Install dependencies (Windows)
         if: matrix.os == 'windows'
@@ -52,18 +52,12 @@ jobs:
           choco install make --yes
           choco install mingw --yes
 
-      - name: Prepare build
-        working-directory: ./xdelta
-        run: |
-          ./autogen.sh
-          ./configure --host=${{ matrix.arch }}-unknown-${{ matrix.os }}
-
       - name: Build
-        working-directory: ./xdelta
+        working-directory: ./xdelta/xdelta3
         run: make -j$(nproc || sysctl -n hw.ncpu || echo 2)
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: xdelta3-${{ matrix.os }}-${{ matrix.arch }}
-          path: ./xdelta/xdelta3
+          path: ./xdelta/xdelta3/xdelta3
