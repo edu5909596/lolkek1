@@ -3,7 +3,7 @@ name: Build xdelta3 Binaries
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Позволяет запускать вручную со страницы Actions
+  workflow_dispatch:
 
 jobs:
   build:
@@ -26,7 +26,6 @@ jobs:
             artifact_name: xdelta3.macos.x86_64
           - os: macos
             arch: arm64
-            # Кросс-компиляция для arm64 выполняется на Ubuntu с помощью osxcross
             runner: ubuntu-latest
             artifact_name: xdelta3.macos.arm64
 
@@ -51,23 +50,18 @@ jobs:
     - name: Setup osxcross for macOS ARM64 cross-compilation
       if: matrix.arch == 'arm64' && runner.os == 'Linux'
       run: |
-        # Устанавливаем зависимости для osxcross
         sudo apt-get install -y libxml2-dev libssl-dev llvm-dev
-        # Клонируем osxcross
         git clone https://github.com/tpoechtrager/osxcross.git
         cd osxcross
-        # Скачиваем macOS SDK
         ./tools/gen_sdk_package_p7s.sh
-        # Перемещаем SDK
         sudo mv MacOSX1*.sdk.tar.xz tarballs/
-        # Собираем osxcross
         sudo ./build.sh
-        # Добавляем компиляторы в PATH
         echo "$PWD/target/bin" | sudo tee -a $GITHUB_PATH
 
     - name: Configure CMake
+      # ИСПОЛЬЗУЕМ BASH НА ВСЕХ ПЛАТФОРМАХ ДЛЯ ЕДИНООБРАЗИЯ
+      shell: bash
       run: |
-        # Опции для сборки исполняемого файла со всеми возможностями
         cmake -B build \
           -DXD3_ENABLE_SECONDARY_COMPRESSION=ON \
           -DXD3_ENABLE_ENCODER=ON \
@@ -79,6 +73,8 @@ jobs:
           .
 
     - name: Build the executable
+      # ИСПОЛЬЗУЕМ BASH НА ВСЕХ ПЛАТФОРМАХ
+      shell: bash
       run: cmake --build build --config Release
 
     - name: Prepare artifact
