@@ -1,0 +1,99 @@
+name: Build xdelta3 Binaries
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # Позволяет запускать вручную со страницы Actions
+
+jobs:
+  build:
+    name: ${{ matrix.os }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - os: windows
+            arch: x86_64
+            runner: windows-latest
+            artifact_name: xdelta3.exe
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-latest
+            artifact_name: xdelta3.linux
+          - os: macos
+            arch: x86_64
+            runner: macos-latest
+            artifact_name: xdelta3.macos.x86_64
+          - os: macos
+            arch: arm64
+            # Кросс-компиляция для arm64 выполняется на Ubuntu с помощью osxcross
+            runner: ubuntu-latest
+            artifact_name: xdelta3.macos.arm64
+
+    steps:
+    - name: Checkout xdelta source code
+      uses: actions/checkout@v4
+      with:
+        repository: marco-calautti/xdelta
+        ref: ab959ecd9a471a0dec5babc3de9d1e27ca25ffa8
+
+    - name: Install dependencies (Linux/Cross-Compile)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake make liblzma-dev clang
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install cmake xz
+
+    - name: Setup osxcross for macOS ARM64 cross-compilation
+      if: matrix.arch == 'arm64' && runner.os == 'Linux'
+      run: |
+        # Устанавливаем зависимости для osxcross
+        sudo apt-get install -y libxml2-dev libssl-dev llvm-dev
+        # Клонируем osxcross
+        git clone https://github.com/tpoechtrager/osxcross.git
+        cd osxcross
+        # Скачиваем macOS SDK
+        ./tools/gen_sdk_package_p7s.sh
+        # Перемещаем SDK
+        sudo mv MacOSX1*.sdk.tar.xz tarballs/
+        # Собираем osxcross
+        sudo ./build.sh
+        # Добавляем компиляторы в PATH
+        echo "$PWD/target/bin" | sudo tee -a $GITHUB_PATH
+
+    - name: Configure CMake
+      run: |
+        # Опции для сборки исполняемого файла со всеми возможностями
+        cmake -B build \
+          -DXD3_ENABLE_SECONDARY_COMPRESSION=ON \
+          -DXD3_ENABLE_ENCODER=ON \
+          -DXD3_ENABLE_VCDIFF_TOOLS=ON \
+          -DXD3_ENABLE_LZMA=ON \
+          -DXD3_BUILD_AS_EXE=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          ${{ matrix.arch == 'arm64' && runner.os == 'Linux' && '-DCMAKE_TOOLCHAIN_FILE=../osxcross/target/toolchain.cmake -DSDK_VERSION=11.3' || '' }} \
+          .
+
+    - name: Build the executable
+      run: cmake --build build --config Release
+
+    - name: Prepare artifact
+      shell: bash
+      run: |
+        mkdir -p artifacts
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          mv build/Release/xdelta3.exe artifacts/${{ matrix.artifact_name }}
+        else
+          mv build/xdelta3 artifacts/${{ matrix.artifact_name }}
+        fi
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: xdelta3-binaries
+        path: artifacts/
+        if-no-files-found: error
