@@ -1,99 +1,69 @@
-name: Build xdelta3 Binaries
+name: Build xdelta3.1
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
-    name: ${{ matrix.os }} (${{ matrix.arch }})
+    name: Build (${{ matrix.os }}-${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
-          - os: windows
-            arch: x86_64
-            runner: windows-latest
-            artifact_name: xdelta3.exe
+          # Linux
           - os: linux
-            arch: x86_64
             runner: ubuntu-latest
-            artifact_name: xdelta3.linux
-          - os: macos
             arch: x86_64
+          # macOS x86_64
+          - os: macos
+            runner: macos-13
+            arch: x86_64
+          # macOS arm64 (Apple Silicon)
+          - os: macos
             runner: macos-latest
-            artifact_name: xdelta3.macos.x86_64
-          - os: macos
             arch: arm64
-            runner: ubuntu-latest
-            artifact_name: xdelta3.macos.arm64
+          # Windows
+          - os: windows
+            runner: windows-latest
+            arch: x86_64
 
     steps:
-    - name: Checkout xdelta source code
-      uses: actions/checkout@v4
-      with:
-        repository: marco-calautti/xdelta
-        ref: ab959ecd9a471a0dec5babc3de9d1e27ca25ffa8
+      - name: Clone xdelta
+        run: |
+          git clone https://github.com/jmacd/xdelta.git
+          cd xdelta
+          git submodule update --init --recursive
 
-    - name: Install dependencies (Linux/Cross-Compile)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake make liblzma-dev clang
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential autoconf automake libtool
 
-    - name: Install dependencies (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        brew install cmake xz
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos'
+        run: brew install automake autoconf libtool
 
-    - name: Setup osxcross for macOS ARM64 cross-compilation
-      if: matrix.arch == 'arm64' && runner.os == 'Linux'
-      run: |
-        sudo apt-get install -y libxml2-dev libssl-dev llvm-dev
-        git clone https://github.com/tpoechtrager/osxcross.git
-        cd osxcross
-        ./tools/gen_sdk_package_p7s.sh
-        sudo mv MacOSX1*.sdk.tar.xz tarballs/
-        sudo ./build.sh
-        echo "$PWD/target/bin" | sudo tee -a $GITHUB_PATH
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows'
+        run: |
+          choco install make --yes
+          choco install mingw --yes
 
-    - name: Configure CMake
-      shell: bash
-      run: |
-        # Добавляем флаги для поиска liblzma на macOS
-        if [ "${{ runner.os }}" == "macOS" ]; then
-          export LDFLAGS="-L/usr/local/opt/xz/lib"
-          export CPPFLAGS="-I/usr/local/opt/xz/include"
-        fi
-        
-        cmake -B build \
-          -DXD3_ENABLE_SECONDARY_COMPRESSION=ON \
-          -DXD3_ENABLE_ENCODER=ON \
-          -DXD3_ENABLE_VCDIFF_TOOLS=ON \
-          -DXD3_ENABLE_LZMA=ON \
-          -DXD3_BUILD_AS_EXE=ON \
-          -DCMAKE_BUILD_TYPE=Release \
-          ${{ matrix.arch == 'arm64' && runner.os == 'Linux' && '-DCMAKE_TOOLCHAIN_FILE=../osxcross/target/toolchain.cmake -DSDK_VERSION=11.3' || '' }} \
-          .
+      - name: Prepare build
+        working-directory: ./xdelta
+        run: |
+          ./autogen.sh
+          ./configure --host=${{ matrix.arch }}-unknown-${{ matrix.os }}
 
-    - name: Build the executable
-      shell: bash
-      run: cmake --build build --config Release
+      - name: Build
+        working-directory: ./xdelta
+        run: make -j$(nproc || sysctl -n hw.ncpu || echo 2)
 
-    - name: Prepare artifact
-      shell: bash
-      run: |
-        mkdir -p artifacts
-        if [ "${{ runner.os }}" == "Windows" ]; then
-          mv build/Release/xdelta3.exe artifacts/${{ matrix.artifact_name }}
-        else
-          mv build/xdelta3 artifacts/${{ matrix.artifact_name }}
-        fi
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: xdelta3-binaries
-        path: artifacts/
-        if-no-files-found: error
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xdelta3-${{ matrix.os }}-${{ matrix.arch }}
+          path: ./xdelta/xdelta3
