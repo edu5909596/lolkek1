@@ -59,9 +59,14 @@ jobs:
         echo "$PWD/target/bin" | sudo tee -a $GITHUB_PATH
 
     - name: Configure CMake
-      # ИСПОЛЬЗУЕМ BASH НА ВСЕХ ПЛАТФОРМАХ ДЛЯ ЕДИНООБРАЗИЯ
       shell: bash
       run: |
+        # Добавляем флаги для поиска liblzma на macOS
+        if [ "${{ runner.os }}" == "macOS" ]; then
+          export LDFLAGS="-L/usr/local/opt/xz/lib"
+          export CPPFLAGS="-I/usr/local/opt/xz/include"
+        fi
+        
         cmake -B build \
           -DXD3_ENABLE_SECONDARY_COMPRESSION=ON \
           -DXD3_ENABLE_ENCODER=ON \
@@ -73,7 +78,6 @@ jobs:
           .
 
     - name: Build the executable
-      # ИСПОЛЬЗУЕМ BASH НА ВСЕХ ПЛАТФОРМАХ
       shell: bash
       run: cmake --build build --config Release
 
